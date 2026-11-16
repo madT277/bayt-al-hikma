@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, Search, LogIn, LayoutDashboard, LogOut } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { SearchOverlay } from "@/components/SearchOverlay";
+import { createClient } from "@/lib/supabase/client";
 
 const categories = [
   { label: "السياسة الدولية", slug: "geopolitics" },
@@ -16,11 +17,70 @@ const categories = [
   { label: "الرياضة", slug: "sports" },
 ];
 
+interface LatestIssueSummary {
+  issue_number: number | string;
+  title_ar: string;
+  publish_date: string | null;
+}
+
+function formatIssueBanner(issue: LatestIssueSummary): string {
+  const num = Number(issue.issue_number);
+  const numLabel = Number.isFinite(num)
+    ? new Intl.NumberFormat("ar-EG").format(num)
+    : String(issue.issue_number);
+
+  let datePart = "";
+  if (issue.publish_date) {
+    const isoMatch = String(issue.publish_date).match(/\d{4}-\d{2}-\d{2}/);
+    const candidate = isoMatch ? `${isoMatch[0]}T00:00:00Z` : String(issue.publish_date);
+    const parsed = new Date(candidate);
+    if (!Number.isNaN(parsed.getTime())) {
+      datePart = new Intl.DateTimeFormat("ar-EG", {
+        month: "long",
+        year: "numeric",
+        timeZone: "UTC",
+      }).format(parsed);
+    }
+  }
+
+  const titlePart = issue.title_ar?.trim() ? ` · ${issue.title_ar.trim()}` : "";
+  return datePart
+    ? `العدد ${numLabel}${titlePart} — ${datePart}`
+    : `العدد ${numLabel}${titlePart}`;
+}
+
 const Header = () => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [latestIssue, setLatestIssue] = useState<LatestIssueSummary | null>(null);
   const { user, signOut } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    let active = true;
+    const supabase = createClient();
+
+    supabase
+      .from("issues")
+      .select("issue_number, title_ar, publish_date")
+      .eq("status", "published")
+      .order("issue_number", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("Header latest issue lookup failed:", error.message);
+          return;
+        }
+        if (active && data) {
+          setLatestIssue(data as LatestIssueSummary);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -37,16 +97,24 @@ const Header = () => {
         {/* Utility bar */}
         <div className="bg-secondary py-1.5 px-4">
           <div className="container mx-auto flex justify-between items-center">
-            <span className="text-secondary-foreground text-xs opacity-80 font-arabic-serif">
-              العدد ٤٧ — أبريل ٢٠٢٦
-            </span>
+            {latestIssue ? (
+              <Link
+                href={`/issue/${latestIssue.issue_number}`}
+                className="text-secondary-foreground text-xs opacity-90 hover:opacity-100 hover:underline font-arabic-serif transition-opacity"
+              >
+                {formatIssueBanner(latestIssue)}
+              </Link>
+            ) : (
+              <span className="text-secondary-foreground text-xs opacity-80 font-arabic-serif">
+                مجلة بيت الحكمة — فكر وثقافة ومعرفة
+              </span>
+            )}
             <div className="flex items-center gap-4">
               {user ? (
                 <>
                   <Link href="/admin" className="text-xs text-accent-foreground bg-accent/20 rounded px-2 py-1 flex items-center gap-1 hover:bg-accent/30 transition-colors font-arabic-serif">
                     <LayoutDashboard size={12} /> لوحة التحكم
                   </Link>
-                  {/* FIX: The missing Logout Button! */}
                   <button onClick={handleLogout} className="text-destructive hover:text-destructive/80 text-xs flex items-center gap-1 font-arabic-serif transition-colors">
                     <LogOut size={12} /> خروج
                   </button>

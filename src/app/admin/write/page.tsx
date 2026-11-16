@@ -71,6 +71,25 @@ export default function StandaloneWritePage() {
     if (url) editor?.chain().focus().setImage({ src: url }).run();
   }, [editor]);
 
+  const generateUniqueSlug = async (rawTitle: string): Promise<string> => {
+    const baseSlug = slugify(rawTitle);
+    const { data: existing } = await supabase
+      .from("articles")
+      .select("slug")
+      .like("slug", `${baseSlug}%`);
+
+    const usedSlugs = new Set((existing ?? []).map((row) => row.slug));
+    if (!usedSlugs.has(baseSlug)) {
+      return baseSlug;
+    }
+
+    let suffix = 2;
+    while (usedSlugs.has(`${baseSlug}-${suffix}`)) {
+      suffix += 1;
+    }
+    return `${baseSlug}-${suffix}`;
+  };
+
   const handleSave = async (status: "draft" | "published") => {
     if (!title.trim()) return toast({ title: "العنوان مطلوب", variant: "destructive" });
     if (!editor) return;
@@ -83,9 +102,8 @@ export default function StandaloneWritePage() {
       if (!error) coverUrl = supabase.storage.from("article-images").getPublicUrl(path).data.publicUrl;
     }
 
-    const { error } = await supabase.from("articles").insert({
+    const basePayload = {
       title_ar: title,
-      slug: slugify(title),
       subtitle_ar: subtitle || null,
       body_ar: editor.getHTML(),
       cover_image: coverUrl,
@@ -94,7 +112,23 @@ export default function StandaloneWritePage() {
       status,
       author_name: author,
       published_at: status === "published" ? new Date().toISOString() : null,
+    };
+
+    const uniqueSlug = await generateUniqueSlug(title);
+    let { error } = await supabase.from("articles").insert({
+      ...basePayload,
+      slug: uniqueSlug,
     });
+
+    // Fallback suffix if a concurrent write or hidden draft still collides on slug
+    if (error && (error.code === "23505" || error.message.toLowerCase().includes("slug"))) {
+      const fallbackSlug = `${slugify(title)}-${Date.now().toString(36).slice(-5)}`;
+      const retry = await supabase.from("articles").insert({
+        ...basePayload,
+        slug: fallbackSlug,
+      });
+      error = retry.error;
+    }
 
     setSaving(false);
     if (error) return toast({ title: "خطأ", description: error.message, variant: "destructive" });

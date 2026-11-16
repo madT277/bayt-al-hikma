@@ -143,6 +143,29 @@ export default function IssuesWorkspacePage() {
     setModalOpen(true);
   };
 
+  const generateUniqueSlug = async (rawTitle: string, currentArticleId?: string): Promise<string> => {
+    const baseSlug = slugify(rawTitle);
+    const { data: existing } = await supabase
+      .from("articles")
+      .select("id, slug")
+      .like("slug", `${baseSlug}%`);
+
+    const usedSlugs = new Set(
+      (existing ?? [])
+        .filter((row) => row.id !== currentArticleId)
+        .map((row) => row.slug)
+    );
+    if (!usedSlugs.has(baseSlug)) {
+      return baseSlug;
+    }
+
+    let suffix = 2;
+    while (usedSlugs.has(`${baseSlug}-${suffix}`)) {
+      suffix += 1;
+    }
+    return `${baseSlug}-${suffix}`;
+  };
+
   const saveArticle = async (status: "draft" | "published") => {
     if (!artTitle.trim()) return toast({ title: "عنوان المقال مطلوب", variant: "destructive" });
     if (!activeIssue?.id) return toast({ title: "اختر عدداً أولاً", variant: "destructive" });
@@ -155,16 +178,28 @@ export default function IssuesWorkspacePage() {
       if (!error) coverUrl = supabase.storage.from("article-images").getPublicUrl(path).data.publicUrl;
     }
 
+    const uniqueSlug = await generateUniqueSlug(artTitle, editingArticle?.id);
     const payload = {
-      title_ar: artTitle, slug: slugify(artTitle), subtitle_ar: artSubtitle || null,
+      title_ar: artTitle, slug: uniqueSlug, subtitle_ar: artSubtitle || null,
       body_ar: editor?.getHTML() || "", cover_image: coverUrl, section: artSection,
       issue_id: activeIssue.id, status, author_name: artAuthor,
       published_at: status === "published" ? new Date().toISOString() : null,
     };
 
-    const { error } = editingArticle
+    let { error } = editingArticle
       ? await supabase.from("articles").update(payload).eq("id", editingArticle.id)
       : await supabase.from("articles").insert(payload);
+
+    if (error && (error.code === "23505" || error.message.toLowerCase().includes("slug"))) {
+      const fallbackPayload = {
+        ...payload,
+        slug: `${slugify(artTitle)}-${Date.now().toString(36).slice(-5)}`,
+      };
+      const retry = editingArticle
+        ? await supabase.from("articles").update(fallbackPayload).eq("id", editingArticle.id)
+        : await supabase.from("articles").insert(fallbackPayload);
+      error = retry.error;
+    }
 
     setSavingArticle(false);
     if (error) return toast({ title: "خطأ", description: error.message, variant: "destructive" });

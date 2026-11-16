@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap');
+/* Fonts (Amiri + Cairo) are loaded via next/font in src/app/layout.tsx and exposed as
+   --font-amiri / --font-arabic. Do not add remote @import font URLs here. */
 
 @tailwind base;
 @tailwind components;
@@ -26,8 +27,8 @@
     --input: 40 20% 85%;
     --ring: 180 100% 10%;
     --radius: 0.375rem;
-    --font-heading: 'Amiri', serif;
-    --font-body: system-ui, -apple-system, sans-serif;
+    --font-heading: var(--font-amiri), var(--font-arabic), serif;
+    --font-body: var(--font-arabic), system-ui, -apple-system, sans-serif;
   }
 }
 
@@ -35,11 +36,59 @@
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground;
-    font-family: var(--font-body);
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
   }
+
+  html[dir="rtl"] {
+    text-align: right;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-body);
+    /* Arabic script needs more generous leading than Latin defaults. */
+    line-height: 1.8;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading);
+    line-height: 1.4;
+  }
+
+  /* Keep Latin/numeric snippets (emails, URLs, code) readable inside RTL flow. */
+  input[type="email"],
+  input[type="url"],
+  code,
+  pre {
+    direction: ltr;
+    unicode-bidi: plaintext;
+  }
+
+  ::selection {
+    background-color: #E5B95F;
+    color: #003434;
+  }
+}
+
+@layer components {
+  /* Tiptap / sanitized article HTML rendered inside .prose — fix LTR defaults for RTL. */
+  [dir="rtl"] .prose :where(ul, ol) {
+    padding-inline-start: 1.625em;
+    padding-left: 0;
+  }
+
+  [dir="rtl"] .prose :where(blockquote) {
+    border-left-width: 0;
+    border-right-width: 4px;
+    border-right-color: #E5B95F;
+    padding-left: 0;
+    padding-right: 1em;
+  }
+
+  [dir="rtl"] .prose :where(th, td) {
+    text-align: right;
   }
 }
