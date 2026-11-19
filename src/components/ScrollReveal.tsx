@@ -1,24 +1,31 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 interface ScrollRevealProps {
   children: ReactNode;
   delay?: number;
   className?: string;
+  as?: "div" | "section" | "li" | "article";
 }
 
-const ScrollReveal = ({ children, delay = 0, className }: ScrollRevealProps) => (
-  <motion.div
-    initial={{ opacity: 0, y: 30 }}
-    whileInView={{ opacity: 1, y: 0 }}
-    viewport={{ once: true, margin: "-60px" }}
-    transition={{ duration: 0.5, delay, ease: [0.25, 0.46, 0.45, 0.94] }}
-    className={className}
-  >
-    {children}
-  </motion.div>
-);
-
-export default ScrollReveal;
+/**
+ * Content rises 12px and fades in once, as it enters the viewport.
+ * Short distance + editorial easing so it reads as "settling", not "flying".
+ * Disabled automatically for users who prefer reduced motion (MotionConfig).
+ */
+export default function ScrollReveal({ children, delay = 0, className, as = "div" }: ScrollRevealProps) {
+  const Component = motion[as];
+  return (
+    <Component
+      initial={{ opacity: 0, y: 12 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] }}
+      className={className}
+    >
+      {children}
+    </Component>
+  );
+}

@@ -1,5 +1,6 @@
-/* Fonts (Amiri + Cairo) are loaded via next/font in src/app/layout.tsx and exposed as
-   --font-amiri / --font-arabic. Do not add remote @import font URLs here. */
+/* Bayt Al-Hikma — global styles
+   Fonts are loaded with next/font in src/app/layout.tsx and exposed as
+   --font-serif (Markazi Text) and --font-sans (IBM Plex Sans Arabic). */
 
 @tailwind base;
 @tailwind components;
@@ -7,32 +8,51 @@
 
 @layer base {
   :root {
-    --background: 43 50% 97%;
-    --foreground: 180 100% 10%;
-    --card: 43 50% 97%;
-    --card-foreground: 180 100% 10%;
-    --popover: 43 50% 97%;
-    --popover-foreground: 180 100% 10%;
-    --primary: 180 100% 10%;
-    --primary-foreground: 43 50% 97%;
-    --secondary: 46 100% 22%;
-    --secondary-foreground: 43 50% 97%;
-    --muted: 40 30% 90%;
-    --muted-foreground: 180 30% 30%;
-    --accent: 46 100% 22%;
-    --accent-foreground: 43 50% 97%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 40 20% 85%;
-    --input: 40 20% 85%;
-    --ring: 180 100% 10%;
-    --radius: 0.375rem;
-    --font-heading: var(--font-amiri), var(--font-arabic), serif;
-    --font-body: var(--font-arabic), system-ui, -apple-system, sans-serif;
-  }
-}
+    /* Neutrals — warm paper and ink */
+    --background: 40 36% 95%;        /* #F7F4EE paper */
+    --foreground: 45 8% 10%;         /* #1B1A17 ink */
+    --ink-soft: 40 8% 22%;           /* #3D3A34 body copy */
+    --muted: 40 28% 91%;             /* #EFEBE3 quiet fill */
+    --muted-foreground: 40 8% 39%;   /* #6B665C meta text */
+    --border: 40 20% 83%;            /* #DCD6CA hairlines */
+    --input: 40 20% 78%;
+    --card: 40 36% 97%;
+    --card-foreground: 45 8% 10%;
+    --popover: 40 36% 97%;
+    --popover-foreground: 45 8% 10%;
 
-@layer base {
+    /* Interface roles */
+    --primary: 45 8% 10%;            /* ink buttons */
+    --primary-foreground: 40 36% 97%;
+    --secondary: 40 28% 91%;
+    --secondary-foreground: 45 8% 10%;
+
+    /* The one accent — lapis */
+    --accent: 214 64% 34%;           /* #1F4E8C */
+    --accent-foreground: 40 36% 97%;
+    --accent-soft: 215 45% 93%;
+    --ring: 214 64% 34%;
+
+    /* Semantic states */
+    --destructive: 4 76% 40%;        /* #B42318 */
+    --destructive-foreground: 0 0% 100%;
+    --danger-soft: 5 70% 95%;
+    --success: 153 40% 30%;          /* #2D6A4F */
+    --success-soft: 150 30% 92%;
+    --warning: 40 100% 30%;          /* #9A6700 */
+    --warning-soft: 45 80% 90%;
+
+    /* Comparison palette — distinguishable in hue AND lightness */
+    --data-1: 214 64% 34%;           /* lapis */
+    --data-2: 16 61% 47%;            /* terracotta */
+    --data-3: 41 65% 48%;            /* ochre */
+    --data-4: 164 36% 36%;           /* green-teal */
+    --data-5: 288 26% 42%;           /* plum */
+    --data-6: 220 9% 46%;            /* slate */
+
+    --radius: 4px;
+  }
+
   * {
     @apply border-border;
   }
@@ -40,6 +60,7 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
   }
 
   html[dir="rtl"] {
@@ -47,18 +68,28 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
-    font-family: var(--font-body);
-    /* Arabic script needs more generous leading than Latin defaults. */
-    line-height: 1.8;
+    @apply bg-background font-sans text-foreground antialiased;
+    font-feature-settings: "kern";
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-heading);
-    line-height: 1.4;
+  h1, h2, h3, h4 {
+    @apply font-serif text-foreground;
+    font-weight: 700;
+    text-wrap: balance;
   }
 
-  /* Keep Latin/numeric snippets (emails, URLs, code) readable inside RTL flow. */
+  p {
+    text-wrap: pretty;
+  }
+
+  a {
+    @apply transition-colors duration-200;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-background;
+  }
+
   input[type="email"],
   input[type="url"],
   code,
@@ -67,28 +98,160 @@
     unicode-bidi: plaintext;
   }
 
+  input[type="email"]::placeholder {
+    direction: rtl;
+  }
+
   ::selection {
-    background-color: #E5B95F;
-    color: #003434;
+    background-color: hsl(var(--accent-soft));
+    color: hsl(var(--foreground));
   }
 }
 
 @layer components {
-  /* Tiptap / sanitized article HTML rendered inside .prose — fix LTR defaults for RTL. */
-  [dir="rtl"] .prose :where(ul, ol) {
-    padding-inline-start: 1.625em;
-    padding-left: 0;
+  /* Layout rhythm ---------------------------------------------------------- */
+  .wrap {
+    @apply mx-auto w-full max-w-6xl px-6 md:px-8;
   }
 
-  [dir="rtl"] .prose :where(blockquote) {
-    border-left-width: 0;
-    border-right-width: 4px;
-    border-right-color: #E5B95F;
-    padding-left: 0;
-    padding-right: 1em;
+  .wrap-narrow {
+    @apply mx-auto w-full max-w-prose px-6;
   }
 
-  [dir="rtl"] .prose :where(th, td) {
-    text-align: right;
+  .section {
+    @apply py-16 md:py-24;
+  }
+
+  /* Small sans label above headlines */
+  .kicker {
+    @apply font-sans text-xs font-semibold text-accent;
+  }
+
+  .meta {
+    @apply font-sans text-xs text-muted-foreground;
+  }
+
+  /* Section header: title on the right, optional link on the left, hairline below */
+  .section-head {
+    @apply mb-8 flex items-baseline justify-between gap-4 border-b border-foreground pb-3;
+  }
+
+  /* Text link with an animated underline that grows from the right (RTL start) */
+  .link-underline {
+    background-image: linear-gradient(currentColor, currentColor);
+    background-position: 100% 100%;
+    background-repeat: no-repeat;
+    background-size: 0% 1px;
+    transition: background-size 300ms cubic-bezier(0.22, 1, 0.36, 1), color 200ms;
+  }
+  .link-underline:hover,
+  .group:hover .link-underline {
+    background-size: 100% 1px;
+  }
+
+  /* Image that slowly zooms when its link is hovered */
+  .img-zoom {
+    @apply transition-transform duration-700 ease-editorial;
+  }
+  .group:hover .img-zoom {
+    transform: scale(1.03);
+  }
+
+  /* Skeleton shimmer */
+  .skeleton {
+    @apply animate-shimmer rounded bg-muted;
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(40 28% 95%) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+  }
+
+  /* Article body ----------------------------------------------------------- */
+  .article-body {
+    @apply font-serif text-ink-soft;
+    font-size: 1.3125rem;
+    line-height: 1.95;
+  }
+  .article-body > * + * {
+    margin-top: 1.25em;
+  }
+  .article-body h2 {
+    @apply mt-12 text-2xl text-foreground;
+  }
+  .article-body h3 {
+    @apply mt-10 text-xl text-foreground;
+  }
+  .article-body a {
+    @apply text-accent underline decoration-1 underline-offset-4;
+  }
+  .article-body strong {
+    @apply text-foreground;
+  }
+  .article-body ul,
+  .article-body ol {
+    padding-inline-start: 1.5em;
+  }
+  .article-body ul { list-style: disc; }
+  .article-body ol { list-style: arabic-indic; }
+  .article-body li + li { margin-top: 0.5em; }
+  .article-body li::marker { color: hsl(var(--accent)); }
+  .article-body blockquote {
+    @apply my-10 border-r-2 border-accent pr-6 text-2xl leading-relaxed text-foreground;
+  }
+  .article-body img {
+    @apply mx-auto my-10 w-full rounded;
+  }
+  .article-body hr {
+    @apply my-12 border-border;
+  }
+
+  /* Comparison tables: each data column gets its own colour key */
+  .article-body table {
+    @apply my-10 w-full border-collapse font-sans text-sm;
+  }
+  .article-body th,
+  .article-body td {
+    @apply border-b border-border px-3 py-3 text-right align-top;
+  }
+  .article-body thead th,
+  .article-body tr:first-child th {
+    @apply border-b-0 font-semibold text-foreground;
+    box-shadow: inset 0 -2px 0 0 hsl(var(--foreground));
+  }
+  .article-body tr:first-child th:nth-child(2) { box-shadow: inset 0 -3px 0 0 hsl(var(--data-1)); }
+  .article-body tr:first-child th:nth-child(3) { box-shadow: inset 0 -3px 0 0 hsl(var(--data-2)); }
+  .article-body tr:first-child th:nth-child(4) { box-shadow: inset 0 -3px 0 0 hsl(var(--data-3)); }
+  .article-body tr:first-child th:nth-child(5) { box-shadow: inset 0 -3px 0 0 hsl(var(--data-4)); }
+  .article-body tr:first-child th:nth-child(6) { box-shadow: inset 0 -3px 0 0 hsl(var(--data-5)); }
+  .article-body td:first-child {
+    @apply font-semibold text-foreground;
+  }
+  .article-body tbody tr:hover td {
+    @apply bg-muted/60;
+  }
+
+  /* Tiptap placeholder (admin editor) */
+  .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: right;
+    height: 0;
+    pointer-events: none;
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

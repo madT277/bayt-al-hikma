@@ -3,11 +3,10 @@
 -- File: supabase/seed.sql
 --
 -- Populates:
---   1. Categories lookup table (matching the app's SECTION_LABELS slugs)
---   2. Sample Issue #1 ("القوة الناعمة") with clean publish_date & theme_ar
---   3. Two full Arabic sample articles (linked to Issue #1 across categories)
---      so the Homepage (Featured + Secondary list), Issue #1 Table of Contents,
---      Category pages, and Article Reader can be tested end-to-end.
+--   1. Categories lookup table (matching the app's sections)
+--   2. Sample Issue #1 ("القوة الناعمة") with verified photography & clean date
+--   3. Two full Arabic sample articles linked to Issue #1 (including a
+--      multi-column comparison table to showcase the editorial comparison styles)
 --
 -- Safe to run multiple times (idempotent ON CONFLICT upserts).
 -- =============================================================================
@@ -15,7 +14,7 @@
 begin;
 
 -- -----------------------------------------------------------------------------
--- 1. Categories table (reference metadata for magazine sections)
+-- 1. Categories table
 -- -----------------------------------------------------------------------------
 create table if not exists public.categories (
   slug          text primary key,
@@ -47,7 +46,7 @@ on conflict (slug) do update set
   display_order  = excluded.display_order;
 
 -- -----------------------------------------------------------------------------
--- 2. Sample Issue #1 (creates or enriches Issue #1 and normalizes publish_date)
+-- 2. Sample Issue #1 (verified real photography + clean ISO publish_date)
 -- -----------------------------------------------------------------------------
 insert into public.issues (issue_number, title_ar, theme_ar, publish_date, cover_image, status)
 values (
@@ -55,7 +54,7 @@ values (
   'القوة الناعمة',
   'كيف تشكّل الثقافة والمعرفة والرواية الإعلامية موازين القوى في القرن الحادي والعشرين',
   '2026-04-16',
-  'https://images.unsplash.com/photo-1507842229356-51c61504d3ab?auto=format&fit=crop&w=1200&q=80',
+  'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=1400&q=80',
   'published'
 )
 on conflict (issue_number) do update set
@@ -91,10 +90,15 @@ values
     '<h2>المعرفة بوصفها قوة ناعمة عابرة للحدود</h2>'
     || '<p>لم تكن القوة في التاريخ الإنساني يوماً مجرّد تفوّق عسكري أو هيمنة اقتصادية صلبة؛ بل كانت في جوهرها قدرةً على صياغة المعنى وتصدير النموذج الحضاري. وحين تأسس «بيت الحكمة» في بغداد، لم يكن مجرّد خزانة للكتب، بل كان مركز ثقلٍ معرفي جذب العلماء والمترجمين والفلاسفة من مختلف الحواضر.</p>'
     || '<blockquote>إن الأمم التي تكتفي باستيراد أدوات التفكير دون المساهمة في إنتاجها تظلّ على هامش السردية العالمية مهما بلغت ثرواتها المادية.</blockquote>'
-    || '<h2>التحوّل من المؤسسة إلى الشبكة</h2>'
-    || '<p>في القرن الحادي والعشرين، انتقلت صناعة التأثير الثقافي من المؤسسات التقليدية إلى الفضاءات الرقمية المفتوحة. غير أن هذا الانتقال لم يُلغِ الحاجة إلى المحتوى الرصين؛ بل ضاعف من قيمته في مواجهة سيل المعلومات السريعة والسطحية.</p>'
+    || '<h2>مقارنة بين ثلاث مراحل للتأثير الثقافي</h2>'
+    || '<table><thead><tr><th>المعيار</th><th>عصر المخطوطة</th><th>عصر الطباعة</th><th>العصر الرقمي</th></tr></thead>'
+    || '<tbody>'
+    || '<tr><td>سرعة الانتشار</td><td>بطيئة ومحدودة بالنُسّاخ</td><td>إقليمية عبر الصحف والكتب</td><td>فورية وعابرة للحدود</td></tr>'
+    || '<tr><td>الفاعل الرئيسي</td><td>المؤسسات العلمية والوقفية</td><td>دور النشر والدول الوطنية</td><td>المنصات والمجتمعات المعرفية</td></tr>'
+    || '<tr><td>التحدي الأكبر</td><td>الندرة وكلفة النقل</td><td>الرقابة وتكلفة التوزيع</td><td>السطحية وتشتت الانتباه</td></tr>'
+    || '</tbody></table>'
     || '<p>من هنا تبرز أهمية بناء منصات فكرية عربية تجمع بين عمق التحليل الأكاديمي وجمالية السرد الصحفي، لتقديم قراءة نقدية متوازنة للتحولات الكبرى في السياسة والاقتصاد والثقافة.</p>',
-    'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?auto=format&fit=crop&w=1400&q=80',
+    'https://images.unsplash.com/photo-1518998053901-5348d3961a04?auto=format&fit=crop&w=1400&q=80',
     'culture',
     (select id from target_issue),
     'published',

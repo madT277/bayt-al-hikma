@@ -1,111 +1,297 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, BookOpen, Clock3 } from "lucide-react";
+import { ArrowLeft, BookOpen, Clock3, Mail, Newspaper } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { SECTION_LABELS } from "@/types";
+import { SECTIONS, sectionLabel } from "@/lib/sections";
+import { arNumber, formatDate, readingTimeLabel } from "@/lib/format";
+import { coverFor, PHOTOS } from "@/lib/images";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SectionComparison, type SectionCountItem } from "@/components/article/AnimatedChart";
+import ScrollReveal from "@/components/ScrollReveal";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const supabase = await createClient();
-  const [{ data: latestIssue, error: issueError }, { data: articles, error: articlesError }] = await Promise.all([
-    supabase.from("issues")
+
+  const [
+    { data: latestIssue, error: issueError },
+    { data: articles, error: articlesError },
+    { data: allSections },
+  ] = await Promise.all([
+    supabase
+      .from("issues")
       .select("id,issue_number,title_ar,theme_ar,publish_date,cover_image,status")
       .eq("status", "published")
       .order("issue_number", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    supabase.from("articles")
+    supabase
+      .from("articles")
       .select("id,title_ar,slug,subtitle_ar,cover_image,section,author_name,reading_time,published_at")
       .eq("status", "published")
       .order("published_at", { ascending: false })
-      .limit(4),
+      .limit(6),
+    supabase
+      .from("articles")
+      .select("section")
+      .eq("status", "published"),
   ]);
+
   if (issueError) console.error("Homepage issue lookup failed:", issueError.message);
   if (articlesError) console.error("Homepage article lookup failed:", articlesError.message);
 
   const featured = articles?.[0] ?? null;
-  const secondary = articles?.slice(1) ?? [];
-  const dateLabel = (value: string | null) => value
-    ? new Intl.DateTimeFormat("ar-EG", { year: "numeric", month: "long", day: "numeric" }).format(new Date(value))
-    : "";
+  const secondary = articles?.slice(1, 5) ?? [];
+
+  // Count published articles per section for the multi-colour comparison strip
+  const sectionCounts: Record<string, number> = {};
+  for (const row of allSections ?? []) {
+    if (row.section) {
+      sectionCounts[row.section] = (sectionCounts[row.section] ?? 0) + 1;
+    }
+  }
+  const comparisonItems: SectionCountItem[] = SECTIONS.map((sec) => ({
+    slug: sec.slug,
+    label: sec.label,
+    count: sectionCounts[sec.slug] ?? 0,
+    color: sec.color,
+  }));
 
   return (
-    <main className="min-h-screen bg-background" dir="rtl">
-      <section className="mx-auto max-w-7xl px-5 pb-14 pt-10 md:px-8 md:pb-20 md:pt-16">
-        <div className="mb-10 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-5">
-          <div>
-            <span className="text-xs font-bold tracking-[.24em] text-secondary">مجلة فكر وثقافة ومعرفة</span>
-            <h1 className="mt-3 font-arabic-serif text-4xl font-bold leading-tight text-primary md:text-6xl">بيت الحكمة</h1>
-            <p className="mt-2 text-sm text-muted-foreground md:text-base">مساحة عربية للأفكار التي تستحق التأمل.</p>
-          </div>
-          <Link href="/archive" className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-bold text-primary transition hover:border-secondary hover:bg-secondary/10">
-            تصفح الأرشيف <ArrowLeft size={16} />
-          </Link>
-        </div>
+    <main className="bg-background" dir="rtl">
+      {/* 1. Latest Issue — open asymmetric editorial feature (no heavy dark box) */}
+      <section className="section border-b border-border">
+        <div className="wrap">
+          {latestIssue ? (
+            <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-12 lg:gap-12">
+              <div className="lg:col-span-5">
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="kicker">العدد الأحدث · {arNumber(latestIssue.issue_number)}</span>
+                  {latestIssue.publish_date && (
+                    <>
+                      <span className="text-border" aria-hidden="true">•</span>
+                      <span className="meta">{formatDate(latestIssue.publish_date, "month")}</span>
+                    </>
+                  )}
+                </div>
 
-        {latestIssue ? (
-          <Link href={`/issue/${latestIssue.issue_number}`} className="group relative mb-14 grid overflow-hidden rounded-3xl bg-primary text-primary-foreground shadow-xl md:min-h-[350px] md:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="relative z-10 flex flex-col justify-center p-7 md:p-12">
-              <span className="w-fit rounded-full border border-secondary/50 bg-secondary/10 px-4 py-1.5 text-xs font-bold text-secondary">العدد الأحدث · {latestIssue.issue_number}</span>
-              <h2 className="mt-5 max-w-3xl font-arabic-serif text-3xl font-bold leading-[1.5] md:text-5xl">{latestIssue.title_ar}</h2>
-              {latestIssue.theme_ar && <p className="mt-4 max-w-2xl text-base leading-8 text-white/75 md:text-lg">{latestIssue.theme_ar}</p>}
-              <span className="mt-7 inline-flex w-fit items-center gap-2 rounded-full bg-secondary px-5 py-3 text-sm font-bold text-primary transition group-hover:gap-4">اقرأ العدد <ArrowLeft size={16} /></span>
-            </div>
-            <div className="relative hidden min-h-[350px] overflow-hidden md:block">
-              {latestIssue.cover_image ? <Image src={latestIssue.cover_image} alt={`غلاف ${latestIssue.title_ar}`} fill priority sizes="280px" className="object-cover transition duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center bg-white/5"><BookOpen size={72} className="text-secondary" /></div>}
-              <div className="absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-primary to-transparent" />
-            </div>
-          </Link>
-        ) : (
-          <div className="mb-14 rounded-3xl border border-dashed border-border bg-card px-6 py-14 text-center">
-            <BookOpen className="mx-auto mb-4 text-secondary" size={48} />
-            <h2 className="font-arabic-serif text-2xl font-bold text-primary">العدد الأول قيد الإعداد</h2>
-            <p className="mx-auto mt-3 max-w-xl leading-8 text-muted-foreground">نعمل على إعداد محتوى بيت الحكمة. يمكنك استكشاف المقالات المنشورة أو الاشتراك في النشرة البريدية.</p>
-            <Link href="/newsletter" className="mt-6 inline-flex rounded-full bg-primary px-6 py-3 text-sm font-bold text-primary-foreground transition hover:bg-secondary hover:text-primary">اشترك في النشرة</Link>
-          </div>
-        )}
+                <h1 className="mt-4 font-serif text-4xl font-bold leading-[1.15] text-foreground md:text-5xl">
+                  <Link href={`/issue/${latestIssue.issue_number}`} className="link-underline hover:text-accent">
+                    {latestIssue.title_ar}
+                  </Link>
+                </h1>
 
-        <div className="mb-7 flex items-end justify-between border-b border-border pb-4">
-          <div>
-            <span className="text-xs font-bold tracking-[.2em] text-secondary">قراءات مختارة</span>
-            <h2 className="mt-2 font-arabic-serif text-3xl font-bold text-primary">أحدث المقالات</h2>
-          </div>
-          <Link href="/archive" className="text-sm font-bold text-secondary transition hover:text-primary">كل الأعداد ←</Link>
-        </div>
+                {latestIssue.theme_ar ? (
+                  <p className="mt-5 font-serif text-xl leading-relaxed text-ink-soft">
+                    {latestIssue.theme_ar}
+                  </p>
+                ) : (
+                  <p className="mt-5 font-serif text-xl leading-relaxed text-muted-foreground">
+                    ملف عددي يجمع قراءات ومقالات معمّقة حول الأفكار التي تشكّل عالمنا المعاصر.
+                  </p>
+                )}
 
-        {!featured ? (
-          <p className="rounded-2xl border border-dashed border-border bg-card px-6 py-12 text-center text-muted-foreground">لا توجد مقالات منشورة حالياً.</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-7 lg:grid-cols-[1.2fr_.8fr]">
-            <Link href={`/article/${featured.slug}`} className="group overflow-hidden rounded-2xl border border-border bg-card transition hover:-translate-y-1 hover:shadow-xl">
-              <div className="relative aspect-[16/9] overflow-hidden bg-muted">
-                {featured.cover_image ? <Image src={featured.cover_image} alt={featured.title_ar} fill sizes="(min-width: 1024px) 60vw, 100vw" className="object-cover transition duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-secondary"><BookOpen size={54} /></div>}
+                <div className="mt-8 flex flex-wrap items-center gap-6">
+                  <Link
+                    href={`/issue/${latestIssue.issue_number}`}
+                    className="inline-flex h-11 items-center gap-2 rounded bg-primary px-6 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-ink-soft"
+                  >
+                    <span>اقرأ العدد</span>
+                    <ArrowLeft className="size-4" aria-hidden="true" />
+                  </Link>
+                  <Link
+                    href="/archive"
+                    className="link-underline font-sans text-sm font-semibold text-accent"
+                  >
+                    أرشيف الأعداد
+                  </Link>
+                </div>
               </div>
-              <div className="p-6 md:p-8">
-                <span className="text-xs font-bold text-secondary">{SECTION_LABELS[featured.section] || featured.section}</span>
-                <h3 className="mt-3 font-arabic-serif text-2xl font-bold leading-[1.6] text-primary transition group-hover:text-secondary md:text-3xl">{featured.title_ar}</h3>
-                {featured.subtitle_ar && <p className="mt-3 line-clamp-2 leading-8 text-muted-foreground">{featured.subtitle_ar}</p>}
-                <div className="mt-6 flex flex-wrap gap-4 text-xs text-muted-foreground"><span>{featured.author_name || "فريق التحرير"}</span>{featured.published_at && <span>{dateLabel(featured.published_at)}</span>}{featured.reading_time && <span className="inline-flex items-center gap-1"><Clock3 size={13} /> {featured.reading_time} دقائق</span>}</div>
+
+              <div className="lg:col-span-7">
+                <Link
+                  href={`/issue/${latestIssue.issue_number}`}
+                  className="group relative block aspect-[16/10] w-full overflow-hidden rounded bg-muted"
+                >
+                  <Image
+                    src={latestIssue.cover_image || PHOTOS.issueCover}
+                    alt={`غلاف العدد ${latestIssue.issue_number}: ${latestIssue.title_ar}`}
+                    fill
+                    priority
+                    sizes="(min-width: 1024px) 58vw, 100vw"
+                    className="img-zoom object-cover"
+                  />
+                </Link>
               </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon={BookOpen}
+              title="العدد الأول قيد الإعداد"
+              description="يعكف فريق التحرير على تجهيز ملف العدد الأول. اشترك في النشرة البريدية لتصلك فور صدوره."
+              action={{ label: "اشترك في النشرة", href: "/newsletter" }}
+              secondaryAction={{ label: "عن بيت الحكمة", href: "/about" }}
+            />
+          )}
+        </div>
+      </section>
+
+      {/* 2. Recent Articles — Lead story + ruled vertical index (fewer cards, more space) */}
+      <section className="section border-b border-border">
+        <div className="wrap">
+          <div className="section-head">
+            <div>
+              <span className="kicker">قراءات مختارة</span>
+              <h2 className="mt-1 font-serif text-3xl font-bold text-foreground">أحدث المقالات</h2>
+            </div>
+            <Link
+              href="/archive"
+              className="link-underline inline-flex items-center gap-1.5 font-sans text-xs font-semibold text-accent"
+            >
+              <span>تصفّح كل الأعداد</span>
+              <ArrowLeft className="size-3.5" aria-hidden="true" />
             </Link>
+          </div>
 
-            <div className="space-y-5">
-              {secondary.map((article) => (
-                <Link key={article.id} href={`/article/${article.slug}`} className="group flex gap-4 rounded-2xl border border-border bg-card p-4 transition hover:border-secondary/60 hover:shadow-md">
-                  <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-xl bg-muted sm:h-32 sm:w-36">
-                    {article.cover_image ? <Image src={article.cover_image} alt={article.title_ar} fill sizes="144px" className="object-cover transition duration-500 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-secondary"><BookOpen size={28} /></div>}
+          {!featured ? (
+            <EmptyState
+              icon={Newspaper}
+              title="لا توجد مقالات منشورة حالياً"
+              description="ستظهر هنا أحدث المقالات والتحليلات فور نشرها من غرفة التحرير."
+              action={{ label: "استكشف الأرشيف", href: "/archive" }}
+              compact
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-12 lg:grid-cols-12">
+              {/* Lead story */}
+              <ScrollReveal as="article" className={secondary.length > 0 ? "lg:col-span-7" : "lg:col-span-12"}>
+                <Link href={`/article/${featured.slug}`} className="group block">
+                  <div className="relative aspect-[16/10] w-full overflow-hidden rounded bg-muted">
+                    <Image
+                      src={coverFor(featured.cover_image, featured.section)}
+                      alt={featured.title_ar}
+                      fill
+                      sizes="(min-width: 1024px) 58vw, 100vw"
+                      className="img-zoom object-cover"
+                    />
                   </div>
-                  <div className="flex min-w-0 flex-col justify-center">
-                    <span className="text-xs font-bold text-secondary">{SECTION_LABELS[article.section] || article.section}</span>
-                    <h3 className="mt-2 line-clamp-3 font-arabic-serif text-lg font-bold leading-7 text-primary transition group-hover:text-secondary">{article.title_ar}</h3>
-                    {article.published_at && <span className="mt-3 text-xs text-muted-foreground">{dateLabel(article.published_at)}</span>}
+                  <div className="mt-5">
+                    <span className="kicker">{sectionLabel(featured.section)}</span>
+                    <h3 className="mt-2 font-serif text-3xl font-bold leading-snug text-foreground transition-colors group-hover:text-accent md:text-4xl">
+                      <span className="link-underline">{featured.title_ar}</span>
+                    </h3>
+                    {featured.subtitle_ar && (
+                      <p className="mt-3 max-w-2xl text-base leading-relaxed text-ink-soft">
+                        {featured.subtitle_ar}
+                      </p>
+                    )}
+                    <div className="meta mt-4 flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <span className="font-semibold text-foreground">
+                        {featured.author_name || "فريق التحرير"}
+                      </span>
+                      {featured.published_at && <span>{formatDate(featured.published_at)}</span>}
+                      {featured.reading_time && (
+                        <span className="inline-flex items-center gap-1">
+                          <Clock3 className="size-3.5" aria-hidden="true" />
+                          <span>{readingTimeLabel(featured.reading_time)}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </Link>
-              ))}
+              </ScrollReveal>
+
+              {/* Secondary stories — clean hairline-separated editorial list */}
+              {secondary.length > 0 && (
+                <div className="divide-y divide-border border-t border-border lg:col-span-5 lg:border-r lg:border-t-0 lg:pr-10">
+                  {secondary.map((article, idx) => (
+                    <ScrollReveal key={article.id} delay={idx * 0.06} as="article">
+                      <Link
+                        href={`/article/${article.slug}`}
+                        className="group flex items-start gap-5 py-6 first:pt-0 last:pb-0"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="kicker">{sectionLabel(article.section)}</span>
+                          <h3 className="mt-1.5 font-serif text-xl font-bold leading-snug text-foreground transition-colors group-hover:text-accent">
+                            <span className="link-underline">{article.title_ar}</span>
+                          </h3>
+                          <div className="meta mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span>{article.author_name || "فريق التحرير"}</span>
+                            {article.reading_time && (
+                              <>
+                                <span aria-hidden="true">•</span>
+                                <span>{readingTimeLabel(article.reading_time)}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <div className="relative h-20 w-24 shrink-0 overflow-hidden rounded bg-muted">
+                          <Image
+                            src={coverFor(article.cover_image, article.section)}
+                            alt={article.title_ar}
+                            fill
+                            sizes="96px"
+                            className="img-zoom object-cover"
+                          />
+                        </div>
+                      </Link>
+                    </ScrollReveal>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      </section>
+
+      {/* 3. Multi-colour editorial section comparison (6 distinct hues) */}
+      <section className="section border-b border-border">
+        <div className="wrap">
+          <ScrollReveal>
+            <SectionComparison items={comparisonItems} />
+          </ScrollReveal>
+        </div>
+      </section>
+
+      {/* 4. Quiet editorial newsletter invitation (no floating promo card) */}
+      <section className="section">
+        <div className="wrap">
+          <ScrollReveal>
+            <div className="grid grid-cols-1 items-center gap-10 md:grid-cols-12">
+              <div className="md:col-span-7">
+                <span className="kicker">النشرة الأسبوعية</span>
+                <h2 className="mt-2 font-serif text-3xl font-bold text-foreground md:text-4xl">
+                  قراءة واحدة متأنية في بريدك كل أسبوع
+                </h2>
+                <p className="mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">
+                  نختار لك أبرز المقالات والملفات الفكرية الجديدة، دون إعلانات أو رسائل مزعجة.
+                  يمكنك إلغاء الاشتراك بضغطة واحدة في أي وقت.
+                </p>
+                <div className="mt-6">
+                  <Link
+                    href="/newsletter"
+                    className="inline-flex h-11 items-center gap-2 rounded bg-accent px-6 font-sans text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
+                  >
+                    <Mail className="size-4" aria-hidden="true" />
+                    <span>اشترك في النشرة</span>
+                  </Link>
+                </div>
+              </div>
+              <div className="md:col-span-5">
+                <div className="relative aspect-[16/10] w-full overflow-hidden rounded bg-muted">
+                  <Image
+                    src={PHOTOS.newsletter}
+                    alt="كتاب مفتوح وفنجان قهوة"
+                    fill
+                    sizes="(min-width: 768px) 40vw, 100vw"
+                    className="object-cover"
+                  />
+                </div>
+              </div>
+            </div>
+          </ScrollReveal>
+        </div>
       </section>
     </main>
   );

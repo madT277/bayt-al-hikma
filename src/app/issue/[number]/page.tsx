@@ -1,11 +1,13 @@
-import Link from "next/link";
 import Image from "next/image";
-import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowRight, BookOpen, CalendarDays, Clock3, Newspaper } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import { sectionLabel } from "@/lib/sections";
+import { arNumber, articlesLabel, formatDate, readingTimeLabel } from "@/lib/format";
+import { coverFor, PHOTOS } from "@/lib/images";
+import { EmptyState } from "@/components/ui/EmptyState";
 import ScrollReveal from "@/components/ScrollReveal";
-import { BookOpen, ChevronLeft } from "lucide-react";
-import BackToTop from "@/components/BackToTop";
-import { SECTION_LABELS } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,76 +22,147 @@ export default async function IssuePage({ params }: { params: { number: string }
     .eq("issue_number", issueNumber)
     .eq("status", "published")
     .maybeSingle();
+
   if (issueError) console.error("Issue lookup failed:", issueError.message);
   if (!issue) notFound();
 
   const { data: articles, error: articlesError } = await supabase
     .from("articles")
-    .select("id,title_ar,slug,subtitle_ar,author_name,cover_image,section")
+    .select("id,title_ar,slug,subtitle_ar,author_name,cover_image,section,reading_time")
     .eq("issue_id", issue.id)
     .eq("status", "published")
     .order("created_at", { ascending: true });
+
   if (articlesError) console.error("Issue articles lookup failed:", articlesError.message);
 
+  const list = articles ?? [];
+
   return (
-    <main className="min-h-screen bg-background" dir="rtl">
-      <div className="mx-auto max-w-6xl px-5 py-10 md:px-8 md:py-14">
-        <ScrollReveal>
-          <Link href="/archive" className="mb-7 inline-flex items-center gap-2 text-sm font-semibold text-secondary transition hover:text-primary">
-            <ChevronLeft size={16} /> العودة إلى الأرشيف
-          </Link>
-          <section className="relative isolate mb-14 overflow-hidden rounded-3xl bg-primary p-7 text-primary-foreground shadow-xl md:p-10">
-            {issue.cover_image && <div className="absolute inset-0 -z-10 opacity-20"><Image src={issue.cover_image} alt="" fill sizes="100vw" className="object-cover" /></div>}
-            <div className="flex flex-col items-center gap-8 md:flex-row">
-              {issue.cover_image ? (
-                <div className="relative aspect-[3/4] w-44 shrink-0 overflow-hidden rounded-xl border border-white/20 shadow-2xl md:w-56">
-                  <Image src={issue.cover_image} alt={`غلاف ${issue.title_ar}`} fill sizes="224px" className="object-cover" />
-                </div>
-              ) : <div className="flex aspect-[3/4] w-44 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/5 md:w-56"><BookOpen size={58} className="text-secondary" /></div>}
-              <div className="text-center md:text-right">
-                <span className="inline-flex rounded-full border border-secondary/50 bg-secondary/10 px-4 py-1.5 text-sm font-bold text-secondary">العدد {issue.issue_number}</span>
-                <h1 className="mt-5 font-arabic-serif text-3xl font-bold leading-[1.5] md:text-5xl">{issue.title_ar}</h1>
-                {issue.theme_ar && <p className="mt-4 text-lg leading-8 text-white/80">« {issue.theme_ar} »</p>}
-                {issue.publish_date && <p className="mt-5 text-sm text-white/60">تاريخ النشر: {issue.publish_date}</p>}
-              </div>
+    <main className="section min-h-screen bg-background" dir="rtl">
+      <div className="wrap">
+        <Link
+          href="/archive"
+          className="link-underline mb-8 inline-flex items-center gap-2 font-sans text-xs font-semibold text-muted-foreground hover:text-foreground"
+        >
+          <ArrowRight className="size-3.5" aria-hidden="true" />
+          <span>العودة إلى الأرشيف</span>
+        </Link>
+
+        {/* Editorial issue spread */}
+        <section className="grid grid-cols-1 items-center gap-10 border-b border-foreground pb-14 lg:grid-cols-12 lg:gap-12">
+          <div className="lg:col-span-4">
+            <div className="relative mx-auto aspect-[3/4] max-w-xs overflow-hidden rounded bg-muted lg:mx-0 lg:max-w-none">
+              <Image
+                src={issue.cover_image || PHOTOS.issueCover}
+                alt={`غلاف العدد ${issue.issue_number}: ${issue.title_ar}`}
+                fill
+                priority
+                sizes="(min-width: 1024px) 320px, 80vw"
+                className="object-cover"
+              />
             </div>
-          </section>
-        </ScrollReveal>
+          </div>
 
-        <div className="mb-8 flex items-end justify-between border-b border-border pb-4">
-          <div>
-            <span className="text-xs font-bold tracking-[.2em] text-secondary">محتويات العدد</span>
-            <h2 className="mt-2 font-arabic-serif text-3xl font-bold text-primary">فهرس العدد</h2>
-          </div>
-          <span className="text-sm text-muted-foreground">{articles?.length ?? 0} مقالات</span>
-        </div>
+          <div className="lg:col-span-8">
+            <span className="kicker inline-flex items-center gap-1.5">
+              <BookOpen className="size-3.5" aria-hidden="true" />
+              <span>العدد {arNumber(issue.issue_number)}</span>
+            </span>
 
-        {articles?.length ? (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {articles.map((article, index) => (
-              <ScrollReveal key={article.id} delay={index * 0.05}>
-                <Link href={`/article/${article.slug}`} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition duration-300 hover:-translate-y-1 hover:border-secondary/60 hover:shadow-lg sm:flex-row">
-                  <div className="relative h-52 shrink-0 bg-muted sm:h-auto sm:w-40">
-                    {article.cover_image ? <Image src={article.cover_image} alt={article.title_ar} fill sizes="160px" className="object-cover transition duration-500 group-hover:scale-105" /> : <div className="flex h-full min-h-40 items-center justify-center text-secondary"><BookOpen size={34} /></div>}
-                  </div>
-                  <div className="flex flex-1 flex-col justify-center p-5">
-                    <span className="text-xs font-bold text-secondary">{SECTION_LABELS[article.section] || article.section}</span>
-                    <h3 className="mt-2 font-arabic-serif text-xl font-bold leading-8 text-primary transition group-hover:text-secondary">{article.title_ar}</h3>
-                    {article.subtitle_ar && <p className="mt-2 line-clamp-2 text-sm leading-7 text-muted-foreground">{article.subtitle_ar}</p>}
-                    {article.author_name && <p className="mt-4 text-xs text-muted-foreground">بقلم: {article.author_name}</p>}
-                  </div>
-                </Link>
-              </ScrollReveal>
-            ))}
+            <h1 className="mt-3 font-serif text-4xl font-bold leading-tight text-foreground md:text-5xl">
+              {issue.title_ar}
+            </h1>
+
+            {issue.theme_ar && (
+              <p className="mt-5 max-w-2xl font-serif text-2xl leading-relaxed text-ink-soft">
+                «{issue.theme_ar}»
+              </p>
+            )}
+
+            <div className="meta mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border pt-5">
+              {issue.publish_date && (
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarDays className="size-3.5" aria-hidden="true" />
+                  <span>تاريخ النشر: {formatDate(issue.publish_date)}</span>
+                </span>
+              )}
+              <span>{articlesLabel(list.length)}</span>
+            </div>
           </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
-            <BookOpen className="mx-auto mb-4 text-secondary" size={42} />
-            <p className="font-arabic-serif text-lg font-bold text-primary">لا توجد مقالات منشورة في هذا العدد حتى الآن.</p>
+        </section>
+
+        {/* Table of contents — numbered editorial index instead of heavy cards */}
+        <section className="pt-14">
+          <div className="section-head">
+            <div>
+              <span className="kicker">محتويات العدد</span>
+              <h2 className="mt-1 font-serif text-3xl font-bold text-foreground">فهرس العدد</h2>
+            </div>
+            <span className="meta">{articlesLabel(list.length)}</span>
           </div>
-        )}
+
+          {list.length === 0 ? (
+            <EmptyState
+              icon={Newspaper}
+              title="لا توجد مقالات في هذا العدد بعد"
+              description="يتم حالياً مراجعة وتنسيق مقالات هذا العدد. يمكنك العودة إلى الأرشيف أو قراءة المقالات المستقلة."
+              action={{ label: "الصفحة الرئيسية", href: "/" }}
+              secondaryAction={{ label: "كل الأعداد", href: "/archive" }}
+              compact
+            />
+          ) : (
+            <ol className="divide-y divide-border">
+              {list.map((article, index) => (
+                <ScrollReveal key={article.id} delay={index * 0.05} as="li">
+                  <Link
+                    href={`/article/${article.slug}`}
+                    className="group grid grid-cols-1 items-center gap-6 py-8 md:grid-cols-12"
+                  >
+                    <span className="hidden font-serif text-3xl font-bold text-muted-foreground/50 md:col-span-1 md:block">
+                      {arNumber(index + 1).padStart(2, "٠")}
+                    </span>
+
+                    <div className="md:col-span-8">
+                      <span className="kicker">{sectionLabel(article.section)}</span>
+                      <h3 className="mt-1.5 font-serif text-2xl font-bold leading-snug text-foreground transition-colors group-hover:text-accent">
+                        <span className="link-underline">{article.title_ar}</span>
+                      </h3>
+                      {article.subtitle_ar && (
+                        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+                          {article.subtitle_ar}
+                        </p>
+                      )}
+                      <div className="meta mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+                        <span className="font-medium text-foreground">
+                          {article.author_name || "فريق التحرير"}
+                        </span>
+                        {article.reading_time && (
+                          <span className="inline-flex items-center gap-1">
+                            <Clock3 className="size-3.5" aria-hidden="true" />
+                            <span>{readingTimeLabel(article.reading_time)}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <div className="relative aspect-[16/10] w-full overflow-hidden rounded bg-muted">
+                        <Image
+                          src={coverFor(article.cover_image, article.section)}
+                          alt={article.title_ar}
+                          fill
+                          sizes="(min-width: 768px) 260px, 100vw"
+                          className="img-zoom object-cover"
+                        />
+                      </div>
+                    </div>
+                  </Link>
+                </ScrollReveal>
+              ))}
+            </ol>
+          )}
+        </section>
       </div>
-      <BackToTop />
     </main>
   );
 }

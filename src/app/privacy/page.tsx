@@ -1,26 +1,47 @@
-import { Metadata } from 'next'
+import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: 'سياسة الخصوصية',
-}
+  title: "سياسة الخصوصية",
+  description: "كيف تتعامل مجلة بيت الحكمة مع بيانات القراء والمشتركين.",
+};
 
 export default function PrivacyPage() {
   return (
-    <main className="max-w-3xl mx-auto px-4 py-16 space-y-8 min-h-[70vh]">
-      <h1 className="text-4xl font-serif text-teal border-b-2 border-gold pb-4 inline-block">سياسة الخصوصية</h1>
-      
-      <div className="space-y-6 text-ink-2 leading-relaxed">
-        <p className="text-sm text-ink-3">آخر تحديث: أبريل 2026</p>
-        
-        <h2 className="text-xl font-bold text-teal mt-6">1. جمع المعلومات</h2>
-        <p>نقوم بجمع المعلومات التي تقدمها لنا مباشرة عند الاشتراك في النشرة البريدية أو عند التواصل معنا.</p>
-        
-        <h2 className="text-xl font-bold text-teal mt-6">2. استخدام المعلومات</h2>
-        <p>نستخدم معلوماتك لتحسين تجربة المستخدم، وإرسال التحديثات الدورية عبر البريد الإلكتروني، وتحليل أداء الموقع لتطوير المحتوى.</p>
-        
-        <h2 className="text-xl font-bold text-teal mt-6">3. ملفات تعريف الارتباط (Cookies)</h2>
-        <p>يستخدم هذا الموقع ملفات تعريف الارتباط لتحسين تجربة التصفح وتقديم إعلانات مخصصة (مثل Google AdSense). يمكنك التحكم في إعدادات ملفات تعريف الارتباط من خلال متصفحك.</p>
-      </div>
+    <main className="section min-h-[70vh] bg-background" dir="rtl">
+      <article className="wrap-narrow">
+        <span className="kicker">الشفافية</span>
+        <h1 className="mt-3 font-serif text-4xl font-bold text-foreground md:text-5xl">
+          سياسة الخصوصية
+        </h1>
+        <p className="meta mt-3 border-b border-border pb-6">آخر تحديث: أبريل ٢٠٢٦</p>
+
+        <div className="article-body mt-8">
+          <h2>١. البيانات التي نجمعها</h2>
+          <p>
+            نجمع فقط المعلومات التي تقدّمها لنا طوعاً عند إنشاء حساب قارئ (البريد الإلكتروني والاسم
+            المعروض)، أو عند الاشتراك في النشرة البريدية، أو عند حفظ المقالات في قائمتك الخاصة.
+          </p>
+
+          <h2>٢. كيف نستخدم بياناتك</h2>
+          <p>
+            تُستخدم بياناتك لتشغيل حسابك وحفظ مقالاتك المفضلة وإرسال النشرة البريدية الأسبوعية عند
+            اشتراكك فيها. لا نبيع بيانات القراء ولا نشاركها مع جهات إعلانية.
+          </p>
+
+          <h2>٣. ملفات تعريف الارتباط (Cookies)</h2>
+          <p>
+            نستخدم ملفات تعريف الارتباط الأساسية فقط للحفاظ على جلسة تسجيل الدخول وتفضيلات التصفح.
+            يمكنك حذفها أو تقييدها في أي وقت من إعدادات متصفحك.
+          </p>
+
+          <h2>٤. حقوقك والتواصل</h2>
+          <p>
+            يحق لك طلب الاطلاع على بياناتك أو تعديلها أو حذف حسابك بالكامل عبر{" "}
+            <Link href="/contact">صفحة التواصل معنا</Link>.
+          </p>
+        </div>
+      </article>
     </main>
-  )
+  );
 }
