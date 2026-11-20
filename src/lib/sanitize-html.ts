@@ -29,6 +29,13 @@ export function sanitizeArticleHtml(input: string): string {
       if (name === "class" || name === "dir" || name === "title" || name === "alt" || name === "width" || name === "height" || name === "colspan" || name === "rowspan") {
         attrs.push(`${name}="${escapeAttribute(value)}"`);
       }
+      if (tag === "div" && (name === "data-editorial-block" || name === "data-block-payload")) {
+        if (name === "data-editorial-block" && /^[a-z0-9-]+$/i.test(value)) {
+          attrs.push(`${name}="${escapeAttribute(value)}"`);
+        } else if (name === "data-block-payload" && /^[A-Za-z0-9+/=]+$/.test(value)) {
+          attrs.push(`${name}="${escapeAttribute(value)}"`);
+        }
+      }
       if (name === "href" || name === "src") {
         const safeUrl = isSafeUrl(value);
         if (safeUrl) attrs.push(`${name}="${escapeAttribute(value)}"`);

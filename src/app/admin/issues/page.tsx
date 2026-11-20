@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Bold,
   BookOpen,
+  ChartColumn,
   Heading2,
   Heading3,
   ImagePlus,
@@ -36,6 +37,12 @@ import { useToast } from "@/hooks/use-toast";
 import { SECTIONS, sectionLabel } from "@/lib/sections";
 import { describeError } from "@/lib/errors";
 import { arNumber, formatDate, parseDate } from "@/lib/format";
+import { encodeBlockPayload, isValidChartData, type ChartBlockData } from "@/lib/editorial-blocks/types";
+import {
+  EditorialBlockExtension,
+  createEditorialBlockNode,
+} from "@/components/editorial-blocks/EditorialBlockExtension";
+import { ChartBlockModal } from "@/components/editorial-blocks/ChartBlockModal";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -115,6 +122,10 @@ export default function IssuesWorkspacePage() {
   const [artCoverPreview, setArtCoverPreview] = useState<string | null>(null);
   const [savingArticle, setSavingArticle] = useState(false);
 
+  const [chartModalOpen, setChartModalOpen] = useState(false);
+  const [editingBlockPos, setEditingBlockPos] = useState<number | null>(null);
+  const [editingChartData, setEditingChartData] = useState<ChartBlockData | null>(null);
+
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
@@ -125,6 +136,15 @@ export default function IssuesWorkspacePage() {
       TableHeader,
       TableCell,
       Placeholder.configure({ placeholder: "اكتب المقال هنا..." }),
+      EditorialBlockExtension.configure({
+        onEditBlock: ({ pos, blockType, payload }) => {
+          if (blockType === "chart" && isValidChartData(payload)) {
+            setEditingBlockPos(pos);
+            setEditingChartData(payload);
+            setChartModalOpen(true);
+          }
+        },
+      }),
     ],
     editorProps: {
       attributes: {
@@ -133,6 +153,27 @@ export default function IssuesWorkspacePage() {
       },
     },
   });
+
+  const handleSaveChartBlock = (data: ChartBlockData) => {
+    if (!editor) return;
+    if (editingBlockPos !== null) {
+      const { tr } = editor.state;
+      tr.setNodeMarkup(editingBlockPos, undefined, {
+        blockType: "chart",
+        payload: encodeBlockPayload(data),
+      });
+      editor.view.dispatch(tr);
+    } else {
+      editor
+        .chain()
+        .focus()
+        .insertContent([createEditorialBlockNode("chart", data), { type: "paragraph" }])
+        .run();
+    }
+    setChartModalOpen(false);
+    setEditingBlockPos(null);
+    setEditingChartData(null);
+  };
 
   const loadIssues = useCallback(async () => {
     setLoadingIssues(true);
@@ -716,6 +757,19 @@ export default function IssuesWorkspacePage() {
                 />
 
                 <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1 rounded border border-border bg-card p-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingBlockPos(null);
+                      setEditingChartData(null);
+                      setChartModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded bg-accent-soft px-2.5 py-1.5 font-sans text-xs font-semibold text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <ChartColumn className="size-3.5" aria-hidden="true" />
+                    <span>رسم بياني</span>
+                  </button>
+                  <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
                   <ModalTool label="جدول" icon={TableIcon} onClick={insertTable} />
                   <ModalTool label="صورة" icon={ImagePlus} onClick={insertImage} />
                   <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
@@ -740,6 +794,17 @@ export default function IssuesWorkspacePage() {
           </div>
         </div>
       )}
+
+      <ChartBlockModal
+        open={chartModalOpen}
+        initialData={editingChartData}
+        onClose={() => {
+          setChartModalOpen(false);
+          setEditingBlockPos(null);
+          setEditingChartData(null);
+        }}
+        onSave={handleSaveChartBlock}
+      />
     </div>
   );
 }

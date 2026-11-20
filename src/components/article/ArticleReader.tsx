@@ -21,6 +21,8 @@ import { useToast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/errors";
 import { formatDate, readingTimeLabel } from "@/lib/format";
 import { coverFor } from "@/lib/images";
+import { splitArticleBody } from "@/lib/editorial-blocks/types";
+import { EditorialBlockRenderer } from "@/components/editorial-blocks/EditorialBlockRenderer";
 import { ShareButtons } from "@/components/article/ShareButtons";
 import ScrollReveal from "@/components/ScrollReveal";
 
@@ -125,6 +127,7 @@ export default function ArticleReader({
   const formattedDate = formatDate(article.published_at || article.created_at, "long");
   const coverSrc = coverFor(article.cover_image, article.section);
   const currentFont = FONT_SIZES[fontIdx];
+  const bodySegments = splitArticleBody(safeBodyHtml);
 
   return (
     <>
@@ -252,12 +255,25 @@ export default function ArticleReader({
             </div>
           </figure>
 
-          {/* Article prose */}
+          {/* Article prose + embedded editorial blocks */}
           <div className="wrap-narrow">
-            <div
-              className={`article-body ${currentFont.className}`}
-              dangerouslySetInnerHTML={{ __html: safeBodyHtml }}
-            />
+            <div className="space-y-6">
+              {bodySegments.map((segment, index) =>
+                segment.kind === "html" ? (
+                  <div
+                    key={`prose-${index}`}
+                    className={`article-body ${currentFont.className}`}
+                    dangerouslySetInnerHTML={{ __html: segment.html }}
+                  />
+                ) : (
+                  <EditorialBlockRenderer
+                    key={`block-${index}`}
+                    blockType={segment.blockType}
+                    payload={segment.payload}
+                  />
+                ),
+              )}
+            </div>
 
             {/* End-of-article colophon & share */}
             <footer className="mt-14 space-y-6 border-t border-border pt-8">
