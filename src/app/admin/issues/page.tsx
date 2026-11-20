@@ -68,7 +68,16 @@ const slugify = (s: string) =>
     .trim()
     .replace(/\s+/g, "-")
     .replace(/[^\u0600-\u06FFa-zA-Z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
     .toLowerCase() || `article-${Date.now()}`;
+
+function safeStoragePath(folder: string, file: File): string {
+  const rawExt = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+  const ext = /^[a-z0-9]{2,5}$/.test(rawExt) ? rawExt : "jpg";
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${folder}/${Date.now()}-${rand}.${ext}`;
+}
 
 function toDateInputValue(raw: string | null | undefined): string {
   const parsed = parseDate(raw);
@@ -197,8 +206,10 @@ export default function IssuesWorkspacePage() {
 
     let coverUrl = activeIssue?.cover_image || null;
     if (coverFile) {
-      const path = `issue-covers/${Date.now()}-${coverFile.name}`;
-      const { error: uploadError } = await supabase.storage.from("article-images").upload(path, coverFile);
+      const path = safeStoragePath("issue-covers", coverFile);
+      const { error: uploadError } = await supabase.storage
+        .from("article-images")
+        .upload(path, coverFile, { contentType: coverFile.type });
       if (uploadError) {
         setSavingIssue(false);
         toast({ ...describeError(uploadError), variant: "destructive" });
@@ -269,8 +280,10 @@ export default function IssuesWorkspacePage() {
 
     let coverUrl = editingArticle?.cover_image || null;
     if (artCoverFile) {
-      const path = `covers/${Date.now()}-${artCoverFile.name}`;
-      const { error: uploadError } = await supabase.storage.from("article-images").upload(path, artCoverFile);
+      const path = safeStoragePath("covers", artCoverFile);
+      const { error: uploadError } = await supabase.storage
+        .from("article-images")
+        .upload(path, artCoverFile, { contentType: artCoverFile.type });
       if (uploadError) {
         setSavingArticle(false);
         toast({ ...describeError(uploadError), variant: "destructive" });

@@ -216,9 +216,15 @@
   .article-body td {
     @apply border-b border-border px-3 py-3 text-right align-top;
   }
+  .article-body th p,
+  .article-body td p {
+    margin: 0;
+    font-size: inherit;
+    line-height: 1.65;
+  }
   .article-body thead th,
   .article-body tr:first-child th {
-    @apply border-b-0 font-semibold text-foreground;
+    @apply border-b-0 bg-muted/50 font-semibold text-foreground;
     box-shadow: inset 0 -2px 0 0 hsl(var(--foreground));
   }
   .article-body tr:first-child th:nth-child(2) { box-shadow: inset 0 -3px 0 0 hsl(var(--data-1)); }

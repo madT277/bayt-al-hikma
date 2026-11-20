@@ -185,9 +185,15 @@ export default function AdminDashboard() {
                     >
                       {art.status === "published" ? "منشور" : "مسودة"}
                     </span>
+                    <Link
+                      href={`/admin/write?edit=${art.id}`}
+                      className="link-underline font-sans text-xs font-semibold text-muted-foreground hover:text-foreground"
+                    >
+                      تعديل
+                    </Link>
                     {art.status === "published" && (
                       <Link
-                        href={`/article/${art.slug}`}
+                        href={`/article/${encodeURIComponent(art.slug)}`}
                         className="link-underline font-sans text-xs font-semibold text-accent"
                       >
                         معاينة

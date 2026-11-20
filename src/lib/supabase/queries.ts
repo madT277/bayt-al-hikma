@@ -34,11 +34,19 @@ export async function getRecentStandalones(limit = 4): Promise<Article[]> {
 
 export async function getArticleBySlug(slug: string): Promise<Article | null> {
   const sb = await createClient();
+  let decoded = slug;
+  try {
+    decoded = decodeURIComponent(slug);
+  } catch {
+    decoded = slug;
+  }
+  const candidates = decoded === slug ? [decoded] : [decoded, slug];
   const { data, error } = await sb
     .from("articles")
     .select("*")
-    .eq("slug", slug)
+    .in("slug", candidates)
     .eq("status", "published")
+    .limit(1)
     .maybeSingle();
   if (error) {
     console.error("getArticleBySlug:", error.message);

@@ -4,26 +4,14 @@ const nextConfig = {
 
   images: {
     remotePatterns: [
-      // Supabase Storage CDN
+      // Allow any valid HTTPS photo URL (Supabase Storage, Unsplash, Pexels, Wikimedia, etc.)
       {
         protocol: "https",
-        hostname: "*.supabase.co",
-        pathname: "/storage/v1/object/public/**",
-      },
-      // Google's AIDA-hosted placeholder images (from the mockup)
-      {
-        protocol: "https",
-        hostname: "lh3.googleusercontent.com",
-      },
-      // Common CDNs used during development
-      {
-        protocol: "https",
-        hostname: "images.unsplash.com",
+        hostname: "**",
       },
     ],
   },
 
-  // Experimental: enable support for CSS logical properties if needed
   experimental: {
     optimizePackageImports: ["@supabase/supabase-js"],
   },

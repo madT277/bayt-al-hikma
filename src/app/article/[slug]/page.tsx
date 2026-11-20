@@ -1,18 +1,31 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { SECTION_LABELS, type Article } from "@/types";
+import { sectionLabel } from "@/lib/sections";
+import type { Article } from "@/types";
 import { sanitizeArticleHtml } from "@/lib/sanitize-html";
 import ArticleReader from "@/components/article/ArticleReader";
 
 export const dynamic = "force-dynamic";
 
+function decodeSlug(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 export default async function ArticlePage({ params }: { params: { slug: string } }) {
   const supabase = await createClient();
+  const decodedSlug = decodeSlug(params.slug);
+  const candidates = decodedSlug === params.slug ? [decodedSlug] : [decodedSlug, params.slug];
+
   const { data: articleData, error } = await supabase
     .from("articles")
     .select("*")
-    .eq("slug", params.slug)
+    .in("slug", candidates)
     .eq("status", "published")
+    .limit(1)
     .maybeSingle();
 
   if (error) console.error("Article lookup failed:", error.message);
@@ -32,7 +45,7 @@ export default async function ArticlePage({ params }: { params: { slug: string }
     <ArticleReader
       article={article}
       relatedArticles={(relatedData ?? []) as Article[]}
-      categoryName={SECTION_LABELS[article.section] || article.section}
+      categoryName={sectionLabel(article.section)}
       safeBodyHtml={sanitizeArticleHtml(article.body_ar || "")}
     />
   );

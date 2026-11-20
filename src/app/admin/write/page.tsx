@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useCallback, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -19,6 +19,7 @@ import {
   Heading3,
   ImagePlus,
   Italic,
+  Link2,
   List,
   ListOrdered,
   Quote,
@@ -33,25 +34,59 @@ import { SECTIONS } from "@/lib/sections";
 import { describeError } from "@/lib/errors";
 import { arNumber, readingTimeLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 
-const slugify = (s: string) =>
-  s
+interface IssueOption {
+  id: string;
+  issue_number: number;
+  title_ar: string;
+  status: string;
+}
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+
+function slugify(input: string): string {
+  const cleaned = input
     .trim()
     .replace(/\s+/g, "-")
     .replace(/[^\u0600-\u06FFa-zA-Z0-9-]/g, "")
-    .toLowerCase() || `article-${Date.now()}`;
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  return cleaned || `article-${Date.now()}`;
+}
 
-export default function StandaloneWritePage() {
+/** Supabase Storage rejects Arabic characters and spaces in object keys. */
+function safeStoragePath(folder: string, file: File): string {
+  const rawExt = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+  const ext = /^[a-z0-9]{2,5}$/.test(rawExt) ? rawExt : "jpg";
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${folder}/${Date.now()}-${rand}.${ext}`;
+}
+
+function WriteEditorInner() {
   const supabase = createClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
   const { toast } = useToast();
+
+  const [issues, setIssues] = useState<IssueOption[]>([]);
+  const [loadingArticle, setLoadingArticle] = useState(Boolean(editId));
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [author, setAuthor] = useState("فريق التحرير");
   const [section, setSection] = useState("culture");
+  const [issueId, setIssueId] = useState<string>("");
+
+  const [coverMode, setCoverMode] = useState<"upload" | "url">("upload");
   const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverUrlInput, setCoverUrlInput] = useState("");
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+
   const [wordCount, setWordCount] = useState(0);
   const [saving, setSaving] = useState(false);
 
@@ -78,23 +113,138 @@ export default function StandaloneWritePage() {
     },
   });
 
+  // Load issues for the Issue dropdown
+  useEffect(() => {
+    let active = true;
+    supabase
+      .from("issues")
+      .select("id, issue_number, title_ar, status")
+      .order("issue_number", { ascending: false })
+      .then(({ data }) => {
+        if (active && data) setIssues(data as IssueOption[]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
+
+  // If editing an existing article (?edit=<id>), load it into the form
+  useEffect(() => {
+    if (!editId || !editor) return;
+    let active = true;
+    setLoadingArticle(true);
+
+    supabase
+      .from("articles")
+      .select("*")
+      .eq("id", editId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        setLoadingArticle(false);
+        if (error || !data) {
+          toast({
+            title: "تعذّر فتح المقال للتعديل",
+            description: error ? describeError(error).description : "لم يُعثر على هذا المقال.",
+            variant: "destructive",
+          });
+          return;
+        }
+        setTitle(data.title_ar || "");
+        setSubtitle(data.subtitle_ar || "");
+        setAuthor(data.author_name || "فريق التحرير");
+        setSection(data.section || "culture");
+        setIssueId(data.issue_id || "");
+        setEditingSlug(data.slug || null);
+        if (data.cover_image) {
+          setCoverPreview(data.cover_image);
+          setCoverUrlInput(data.cover_image);
+        }
+        editor.commands.setContent(data.body_ar || "");
+        const text = editor.getText().trim();
+        setWordCount(text ? text.split(/\s+/).length : 0);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [editId, editor, supabase, toast]);
+
   const insertTable = () => {
     editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
   };
 
   const insertImage = useCallback(() => {
-    const url = prompt("أدخل رابط الصورة (https://...):");
-    if (url?.trim()) editor?.chain().focus().setImage({ src: url.trim() }).run();
-  }, [editor]);
+    const url = prompt("أدخل رابط الصورة (يبدأ بـ https://):");
+    const trimmed = url?.trim();
+    if (!trimmed) return;
+    if (!/^https:\/\//i.test(trimmed)) {
+      toast({
+        title: "رابط الصورة غير صالح",
+        description: "تأكّد من أن الرابط يبدأ بـ https:// ثم أعد المحاولة.",
+        variant: "destructive",
+      });
+      return;
+    }
+    editor?.chain().focus().setImage({ src: trimmed }).run();
+  }, [editor, toast]);
 
-  const generateUniqueSlug = async (rawTitle: string): Promise<string> => {
+  const handleCoverFileChange = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "الملف ليس صورة",
+        description: "اختر ملف صورة بصيغة JPG أو PNG أو WebP.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast({
+        title: "حجم الصورة كبير جداً",
+        description: "الحد الأقصى لحجم صورة الغلاف هو ٥ ميغابايت.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setCoverFile(file);
+    setCoverUrlInput("");
+    setCoverPreview(URL.createObjectURL(file));
+  };
+
+  const applyCoverUrl = () => {
+    const trimmed = coverUrlInput.trim();
+    if (!trimmed) return;
+    if (!/^https:\/\//i.test(trimmed)) {
+      toast({
+        title: "رابط الصورة غير صالح",
+        description: "يجب أن يبدأ رابط الصورة بـ https://",
+        variant: "destructive",
+      });
+      return;
+    }
+    setCoverFile(null);
+    setCoverPreview(trimmed);
+  };
+
+  const clearCover = () => {
+    setCoverFile(null);
+    setCoverUrlInput("");
+    setCoverPreview(null);
+  };
+
+  const generateUniqueSlug = async (rawTitle: string, excludeId?: string | null): Promise<string> => {
     const baseSlug = slugify(rawTitle);
     const { data: existing } = await supabase
       .from("articles")
-      .select("slug")
+      .select("id, slug")
       .like("slug", `${baseSlug}%`);
 
-    const usedSlugs = new Set((existing ?? []).map((row) => row.slug));
+    const usedSlugs = new Set(
+      (existing ?? [])
+        .filter((row) => row.id !== excludeId)
+        .map((row) => row.slug),
+    );
     if (!usedSlugs.has(baseSlug)) return baseSlug;
 
     let suffix = 2;
@@ -106,50 +256,77 @@ export default function StandaloneWritePage() {
     if (!title.trim()) {
       toast({
         title: "عنوان المقال مطلوب",
-        description: "اكتب عنواناً رئيسياً قبل حفظ المقال أو نشره.",
+        description: "اكتب عنواناً رئيسياً قبل الحفظ أو النشر.",
         variant: "destructive",
       });
       return;
     }
     if (!editor) return;
+
+    const bodyHtml = editor.getHTML();
+    if (status === "published" && !editor.getText().trim()) {
+      toast({
+        title: "نص المقال فارغ",
+        description: "اكتب فقرة واحدة على الأقل قبل نشر المقال للقراء.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate pasted URL if user typed one without clicking preview
+    let finalCoverUrl: string | null = coverPreview && /^https:\/\//i.test(coverPreview) ? coverPreview : null;
+    if (coverMode === "url" && coverUrlInput.trim() && !coverFile) {
+      if (!/^https:\/\//i.test(coverUrlInput.trim())) {
+        toast({
+          title: "رابط صورة الغلاف غير صالح",
+          description: "يجب أن يبدأ الرابط بـ https:// أو اتركه فارغاً.",
+          variant: "destructive",
+        });
+        return;
+      }
+      finalCoverUrl = coverUrlInput.trim();
+    }
+
     setSaving(true);
 
-    let coverUrl: string | null = null;
     if (coverFile) {
-      const path = `covers/${Date.now()}-${coverFile.name}`;
-      const { error: uploadError } = await supabase.storage.from("article-images").upload(path, coverFile);
+      const path = safeStoragePath("covers", coverFile);
+      const { error: uploadError } = await supabase.storage
+        .from("article-images")
+        .upload(path, coverFile, { contentType: coverFile.type });
+
       if (uploadError) {
         setSaving(false);
         toast({ ...describeError(uploadError), variant: "destructive" });
         return;
       }
-      coverUrl = supabase.storage.from("article-images").getPublicUrl(path).data.publicUrl;
+      finalCoverUrl = supabase.storage.from("article-images").getPublicUrl(path).data.publicUrl;
     }
 
     const basePayload = {
       title_ar: title.trim(),
       subtitle_ar: subtitle.trim() || null,
-      body_ar: editor.getHTML(),
-      cover_image: coverUrl,
+      body_ar: bodyHtml,
+      cover_image: finalCoverUrl,
       section,
-      issue_id: null,
+      issue_id: issueId || null,
       status,
       author_name: author.trim() || "فريق التحرير",
       published_at: status === "published" ? new Date().toISOString() : null,
     };
 
-    const uniqueSlug = await generateUniqueSlug(title);
-    let { error } = await supabase.from("articles").insert({
-      ...basePayload,
-      slug: uniqueSlug,
-    });
+    let finalSlug = editId && editingSlug ? editingSlug : await generateUniqueSlug(title, editId);
+
+    const writeRow = (slugValue: string) =>
+      editId
+        ? supabase.from("articles").update({ ...basePayload, slug: slugValue }).eq("id", editId)
+        : supabase.from("articles").insert({ ...basePayload, slug: slugValue });
+
+    let { error } = await writeRow(finalSlug);
 
     if (error && (error.code === "23505" || error.message.toLowerCase().includes("slug"))) {
-      const fallbackSlug = `${slugify(title)}-${Date.now().toString(36).slice(-5)}`;
-      const retry = await supabase.from("articles").insert({
-        ...basePayload,
-        slug: fallbackSlug,
-      });
+      finalSlug = `${slugify(title)}-${Date.now().toString(36).slice(-5)}`;
+      const retry = await writeRow(finalSlug);
       error = retry.error;
     }
 
@@ -161,19 +338,39 @@ export default function StandaloneWritePage() {
 
     toast({
       title: status === "published" ? "تم نشر المقال بنجاح" : "تم حفظ المسودة",
-      description: status === "published" ? "أصبح المقال متاحاً للقراء الآن." : "يمكنك متابعة تحريره لاحقاً.",
+      description:
+        status === "published"
+          ? "سيتم فتح المقال الآن كما يراه القراء."
+          : "يمكنك العودة إليه لاحقاً من لوحة التحكم.",
     });
-    router.push("/admin");
+
+    if (status === "published") {
+      router.push(`/article/${encodeURIComponent(finalSlug)}`);
+    } else {
+      router.push("/admin");
+    }
+    router.refresh();
   };
 
   const estMinutes = Math.max(1, Math.ceil(wordCount / 200));
+
+  if (loadingArticle) {
+    return (
+      <main className="wrap-narrow space-y-6 py-14" dir="rtl" aria-busy="true">
+        <Skeleton className="h-10 w-1/2" />
+        <Skeleton className="aspect-[16/7] w-full" />
+        <Skeleton className="h-12 w-3/4" />
+        <Skeleton className="h-40 w-full" />
+      </main>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background" dir="rtl">
       {/* Sticky editor action bar */}
       <div className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur-sm">
-        <div className="wrap flex flex-wrap items-center justify-between gap-4 py-3">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="wrap flex flex-wrap items-center justify-between gap-3 py-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <Link
               href="/admin"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
@@ -181,7 +378,10 @@ export default function StandaloneWritePage() {
               <ArrowRight className="size-4" aria-hidden="true" />
               <span>لوحة التحكم</span>
             </Link>
+
             <span className="h-4 w-px bg-border" aria-hidden="true" />
+
+            {/* Section selector */}
             <select
               aria-label="قسم المقال"
               value={section}
@@ -193,8 +393,25 @@ export default function StandaloneWritePage() {
                   {s.label}
                 </option>
               ))}
+              <option value="editorial">كلمة التحرير</option>
             </select>
-            <span className="meta hidden sm:inline">
+
+            {/* Issue selector */}
+            <select
+              aria-label="العدد المرتبط"
+              value={issueId}
+              onChange={(e) => setIssueId(e.target.value)}
+              className="h-9 max-w-[210px] rounded border border-input bg-card px-3 font-sans text-xs font-medium text-foreground focus:border-accent focus:outline-none"
+            >
+              <option value="">مقال مستقل (بدون عدد)</option>
+              {issues.map((iss) => (
+                <option key={iss.id} value={iss.id}>
+                  العدد {arNumber(iss.issue_number)} — {iss.title_ar}
+                </option>
+              ))}
+            </select>
+
+            <span className="meta hidden md:inline">
               {arNumber(wordCount)} كلمة · {readingTimeLabel(estMinutes)}
             </span>
           </div>
@@ -204,49 +421,95 @@ export default function StandaloneWritePage() {
               حفظ كمسودة
             </Button>
             <Button variant="accent" size="sm" onClick={() => handleSave("published")} loading={saving}>
-              نشر المقال
+              {editId ? "حفظ التعديلات ونشر" : "نشر المقال"}
             </Button>
           </div>
         </div>
       </div>
 
       <main className="wrap-narrow py-12">
-        {/* Cover upload */}
-        <div className="mb-10">
+        {/* Cover photo picker: upload OR paste link */}
+        <div className="mb-10 space-y-3">
+          {!coverPreview && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCoverMode("upload")}
+                className={`inline-flex items-center gap-1.5 rounded border px-3 py-1.5 font-sans text-xs font-semibold transition-colors ${
+                  coverMode === "upload"
+                    ? "border-accent bg-accent-soft text-accent"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Upload className="size-3.5" aria-hidden="true" />
+                <span>رفع صورة من جهازك</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCoverMode("url")}
+                className={`inline-flex items-center gap-1.5 rounded border px-3 py-1.5 font-sans text-xs font-semibold transition-colors ${
+                  coverMode === "url"
+                    ? "border-accent bg-accent-soft text-accent"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Link2 className="size-3.5" aria-hidden="true" />
+                <span>لصق رابط صورة</span>
+              </button>
+            </div>
+          )}
+
           {coverPreview ? (
             <div className="relative aspect-[16/9] w-full overflow-hidden rounded border border-border bg-muted">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={coverPreview} alt="معاينة الغلاف" className="h-full w-full object-cover" />
+              <img
+                src={coverPreview}
+                alt="معاينة صورة الغلاف"
+                className="h-full w-full object-cover"
+                onError={() => {
+                  toast({
+                    title: "لم نتمكن من عرض الصورة",
+                    description: "تحقّق من أن الرابط يؤدي مباشرة إلى ملف صورة صالح.",
+                    variant: "destructive",
+                  });
+                }}
+              />
               <button
                 type="button"
-                onClick={() => {
-                  setCoverFile(null);
-                  setCoverPreview(null);
-                }}
+                onClick={clearCover}
                 aria-label="إزالة صورة الغلاف"
                 className="absolute right-3 top-3 rounded bg-foreground/80 p-2 text-background transition-colors hover:bg-destructive"
               >
                 <X className="size-4" />
               </button>
             </div>
-          ) : (
-            <label className="group flex aspect-[16/7] w-full cursor-pointer flex-col items-center justify-center rounded border border-dashed border-input bg-card transition-colors hover:border-accent">
+          ) : coverMode === "upload" ? (
+            <label className="group flex aspect-[16/6] w-full cursor-pointer flex-col items-center justify-center rounded border border-dashed border-input bg-card px-4 text-center transition-colors hover:border-accent">
               <Upload className="mb-2 size-6 text-muted-foreground transition-colors group-hover:text-accent" aria-hidden="true" />
               <span className="font-sans text-sm font-medium text-muted-foreground group-hover:text-foreground">
-                أضف صورة غلاف للمقال (اختياري)
+                اضغط لاختيار صورة الغلاف (JPG أو PNG — حتى ٥ ميغابايت)
               </span>
+              <span className="meta mt-1">إن تركتها فارغة، سيُستخدم غلاف افتراضي مناسب للقسم.</span>
               <input
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    setCoverFile(e.target.files[0]);
-                    setCoverPreview(URL.createObjectURL(e.target.files[0]));
-                  }
-                }}
+                onChange={(e) => handleCoverFileChange(e.target.files?.[0])}
               />
             </label>
+          ) : (
+            <div className="flex flex-col gap-2 rounded border border-border bg-card p-4 sm:flex-row">
+              <Input
+                type="url"
+                value={coverUrlInput}
+                onChange={(e) => setCoverUrlInput(e.target.value)}
+                placeholder="https://images.unsplash.com/..."
+                className="flex-1"
+              />
+              <Button type="button" variant="outline" onClick={applyCoverUrl} className="h-12 shrink-0">
+                معاينة الصورة
+              </Button>
+            </div>
           )}
         </div>
 
@@ -280,11 +543,11 @@ export default function StandaloneWritePage() {
         {/* Formatting toolbar */}
         {editor && (
           <div className="sticky top-16 z-20 mb-6 flex flex-wrap items-center gap-1 rounded border border-border bg-card/95 p-1.5 backdrop-blur-sm">
-            <ToolbarBtn label="جدول مقارنة" icon={TableIcon} onClick={insertTable} />
-            <ToolbarBtn label="إدراج صورة" icon={ImagePlus} onClick={insertImage} />
+            <ToolbarBtn label="إدراج جدول مقارنة" icon={TableIcon} onClick={insertTable} />
+            <ToolbarBtn label="إدراج صورة داخل المقال" icon={ImagePlus} onClick={insertImage} />
             <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-            <ToolbarBtn label="عريض" icon={Bold} onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} />
-            <ToolbarBtn label="مائل" icon={Italic} onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} />
+            <ToolbarBtn label="نص عريض" icon={Bold} onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} />
+            <ToolbarBtn label="نص مائل" icon={Italic} onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} />
             <ToolbarBtn label="عنوان رئيسي" icon={Heading2} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive("heading", { level: 2 })} />
             <ToolbarBtn label="عنوان فرعي" icon={Heading3} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive("heading", { level: 3 })} />
             <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
@@ -300,6 +563,22 @@ export default function StandaloneWritePage() {
         <EditorContent editor={editor} />
       </main>
     </div>
+  );
+}
+
+export default function StandaloneWritePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="wrap-narrow space-y-6 py-14" dir="rtl">
+          <Skeleton className="h-10 w-1/2" />
+          <Skeleton className="aspect-[16/7] w-full" />
+          <Skeleton className="h-40 w-full" />
+        </main>
+      }
+    >
+      <WriteEditorInner />
+    </Suspense>
   );
 }
 

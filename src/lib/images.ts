@@ -27,9 +27,12 @@ const SECTION_PHOTOS: Record<string, string> = {
   standalone: unsplash("1504711434969-e33886168f5c"),  // newspapers
 };
 
-/** Returns the uploaded cover if present, otherwise a section-appropriate photo. */
+/** Returns the uploaded cover if it is a valid HTTPS/relative URL, otherwise a section-appropriate photo. */
 export function coverFor(cover: string | null | undefined, section?: string | null): string {
-  if (cover && cover.trim()) return cover;
+  const trimmed = cover?.trim();
+  if (trimmed && (/^https:\/\//i.test(trimmed) || trimmed.startsWith("/"))) {
+    return trimmed;
+  }
   return SECTION_PHOTOS[section ?? ""] ?? SECTION_PHOTOS.standalone;
 }
 
