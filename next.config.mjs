@@ -3,8 +3,10 @@ const nextConfig = {
   reactStrictMode: true,
 
   images: {
+    // Load remote photos directly in the browser so local IPv6/proxy timeouts
+    // on the Node dev server never cause 500 image errors.
+    unoptimized: true,
     remotePatterns: [
-      // Allow any valid HTTPS photo URL (Supabase Storage, Unsplash, Pexels, Wikimedia, etc.)
       {
         protocol: "https",
         hostname: "**",

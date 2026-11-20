@@ -35,16 +35,26 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Validate session with Supabase Auth server
-  const {
+  // Validate session with Supabase Auth server (retry once on transient fetch timeout)
+  let {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
+
+  if (!user && authError && (authError.name === "AuthRetryableFetchError" || authError.status === 0)) {
+    const retry = await supabase.auth.getUser();
+    user = retry.data.user;
+    authError = retry.error;
+  }
 
   if (request.nextUrl.pathname.startsWith("/admin")) {
     if (!user) {
       const loginUrl = request.nextUrl.clone();
       loginUrl.pathname = "/login";
       loginUrl.searchParams.set("next", request.nextUrl.pathname);
+      if (authError && (authError.name === "AuthRetryableFetchError" || authError.status === 0)) {
+        loginUrl.searchParams.set("reason", "network");
+      }
       const redirectResponse = NextResponse.redirect(loginUrl);
       supabaseResponse.cookies.getAll().forEach((cookie) => {
         redirectResponse.cookies.set(cookie);
@@ -52,12 +62,15 @@ export async function middleware(request: NextRequest) {
       return redirectResponse;
     }
 
-    // Check role in profiles table (with fallback to app_metadata.role)
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    // Check role in profiles table + is_editor() RPC + app_metadata fallback
+    const [{ data: profile }, { data: isEditorRpc }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabase.rpc("is_editor"),
+    ]);
 
     const role =
       profile?.role ??
@@ -65,11 +78,13 @@ export async function middleware(request: NextRequest) {
         ? user.app_metadata.role
         : null);
 
-    if (role !== "admin" && role !== "editor") {
-      const homeUrl = request.nextUrl.clone();
-      homeUrl.pathname = "/";
-      homeUrl.searchParams.set("unauthorized", "admin");
-      const redirectResponse = NextResponse.redirect(homeUrl);
+    const allowed = role === "admin" || role === "editor" || isEditorRpc === true;
+
+    if (!allowed) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = "/login";
+      loginUrl.searchParams.set("reason", "unauthorized");
+      const redirectResponse = NextResponse.redirect(loginUrl);
       supabaseResponse.cookies.getAll().forEach((cookie) => {
         redirectResponse.cookies.set(cookie);
       });

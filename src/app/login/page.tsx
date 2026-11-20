@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { CircleAlert, Eye, EyeOff, LogIn } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { ArrowLeft, CircleAlert, CircleCheck, Eye, EyeOff, LogIn } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { describeError } from "@/lib/errors";
 import { PHOTOS } from "@/lib/images";
@@ -18,10 +18,49 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorBanner, setErrorBanner] = useState<{ title: string; description: string } | null>(null);
+  const [signedInInfo, setSignedInInfo] = useState<{ email: string; role: string } | null>(null);
 
-  const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next");
+  const reason = searchParams.get("reason");
+
+  // Surface clear reason if middleware redirected here
+  useEffect(() => {
+    if (reason === "unauthorized") {
+      setErrorBanner({
+        title: "هذا الحساب لا يملك صلاحية التحرير بعد",
+        description:
+          "أنت مسجّل الدخول حالياً بدور قارئ (reader). لفتح لوحة التحكم، اجعل دور حسابك admin في جدول profiles داخل Supabase ثم أعد الدخول.",
+      });
+    } else if (reason === "network") {
+      setErrorBanner({
+        title: "تأخّر الاتصال بقاعدة البيانات",
+        description: "حدث بطء مؤقت أثناء التحقق من الجلسة. جرّب تسجيل الدخول مرة أخرى الآن.",
+      });
+    }
+  }, [reason]);
+
+  // Check if user is already signed in so they know immediately
+  useEffect(() => {
+    let active = true;
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!active || !user) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!active) return;
+      setSignedInInfo({
+        email: user.email || "",
+        role: profile?.role || "reader",
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,23 +87,71 @@ function LoginForm() {
       return;
     }
 
-    let target = nextPath && nextPath.startsWith("/") ? nextPath : null;
-    if (!target && data.user) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("user_id", data.user.id)
-        .maybeSingle();
-      const isEditor = profile?.role === "admin" || profile?.role === "editor";
-      target = isEditor ? "/admin" : "/profile";
+    let isEditor = false;
+    if (data.user) {
+      const [{ data: profile }, { data: rpcEditor }] = await Promise.all([
+        supabase.from("profiles").select("role").eq("user_id", data.user.id).maybeSingle(),
+        supabase.rpc("is_editor"),
+      ]);
+      const role = profile?.role ?? (typeof data.user.app_metadata?.role === "string" ? data.user.app_metadata.role : null);
+      isEditor = role === "admin" || role === "editor" || rpcEditor === true;
     }
 
-    router.push(target || "/");
-    router.refresh();
+    const requested = nextPath && nextPath.startsWith("/") ? nextPath : null;
+    if (requested?.startsWith("/admin") && !isEditor) {
+      setLoading(false);
+      setSignedInInfo({ email: data.user?.email || email.trim(), role: "reader" });
+      setErrorBanner({
+        title: "تم تسجيل الدخول، لكن الحساب ليس مشرفاً (admin)",
+        description:
+          "سجّلت الدخول بنجاح، لكن دور هذا الحساب في Supabase ما زال reader. حدّث عمود role إلى admin في جدول profiles ثم جرّب فتح لوحة التحكم.",
+      });
+      return;
+    }
+
+    const target = requested || (isEditor ? "/admin" : "/profile");
+    // Full browser navigation ensures fresh auth cookies are sent cleanly to middleware
+    window.location.assign(target);
   };
+
+  const isCurrentEditor = signedInInfo?.role === "admin" || signedInInfo?.role === "editor";
 
   return (
     <>
+      {signedInInfo && (
+        <div className="mt-6 rounded border border-success/30 bg-success-soft p-4 text-xs text-foreground">
+          <div className="flex items-start gap-2.5">
+            <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
+            <div className="space-y-2">
+              <p className="font-semibold">
+                أنت مسجّل الدخول حالياً بحساب{" "}
+                <span dir="ltr" className="underline">
+                  {signedInInfo.email}
+                </span>{" "}
+                ({isCurrentEditor ? "مشرف" : "قارئ"})
+              </p>
+              {isCurrentEditor && (
+                <div className="flex flex-wrap gap-4 pt-1">
+                  <a
+                    href="/admin/write"
+                    className="inline-flex items-center gap-1 font-semibold text-accent hover:underline"
+                  >
+                    <span>افتح صفحة الكتابة الآن</span>
+                    <ArrowLeft className="size-3.5" aria-hidden="true" />
+                  </a>
+                  <a
+                    href="/admin"
+                    className="font-semibold text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    لوحة التحكم
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {errorBanner && (
         <div
           role="alert"
